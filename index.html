@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>关系雷达</title>
+    <link rel="stylesheet" href="./styles.css?v=20260708-sharepack" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="side-rail" aria-label="关系雷达导航">
+        <div class="brand">
+          <div class="brand-symbol" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">Relationship Radar</p>
+            <h1>关系雷达</h1>
+          </div>
+        </div>
+
+        <section class="people-panel" aria-label="两个人">
+          <label>
+            <span>A</span>
+            <input id="personA" type="text" maxlength="12" />
+          </label>
+          <label>
+            <span>B</span>
+            <input id="personB" type="text" maxlength="12" />
+          </label>
+        </section>
+
+        <nav class="module-nav" aria-label="功能模块">
+          <button class="module-button active" type="button" data-view="radar">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v18" />
+              <path d="M3 12h18" />
+              <path d="m5 5 14 14" />
+              <path d="m19 5-14 14" />
+              <circle cx="12" cy="12" r="8" />
+            </svg>
+            <span>雷达测试</span>
+          </button>
+          <button class="module-button" type="button" data-view="sync">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 8h10" />
+              <path d="M7 12h10" />
+              <path d="M7 16h10" />
+              <path d="M4 5h16v14H4z" />
+            </svg>
+            <span>默契卡</span>
+          </button>
+          <button class="module-button" type="button" data-view="boundary">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z" />
+              <path d="m9 12 2 2 4-5" />
+            </svg>
+            <span>边界卡</span>
+          </button>
+          <button class="module-button" type="button" data-view="diary">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h14v16H5z" />
+              <path d="M8 8h8" />
+              <path d="M8 12h8" />
+              <path d="M8 16h5" />
+            </svg>
+            <span>互动日记</span>
+          </button>
+          <button class="module-button" type="button" data-view="story">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5h16v14H4z" />
+              <path d="m8 9 4 3-4 3z" />
+              <path d="M15 9h2" />
+              <path d="M15 13h2" />
+            </svg>
+            <span>剧情选择</span>
+          </button>
+          <button class="module-button" type="button" data-view="result">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 19V5" />
+              <path d="M4 19h16" />
+              <path d="M8 16v-5" />
+              <path d="M12 16V8" />
+              <path d="M16 16v-9" />
+            </svg>
+            <span>关系画像</span>
+          </button>
+        </nav>
+
+        <section class="result-chip" aria-label="当前倾向">
+          <p class="eyebrow">Current Signal</p>
+          <strong id="quickType">关系还在成形</strong>
+          <span id="quickScore">0</span>
+        </section>
+      </aside>
+
+      <main class="main-space">
+        <header class="app-header">
+          <div>
+            <p class="eyebrow">朋友、暧昧、恋人，都先看清彼此的信号</p>
+            <h2 id="pairTitle">你 和 TA</h2>
+          </div>
+          <div class="header-actions">
+            <button id="copyResult" class="icon-button" type="button" title="复制关系画像" aria-label="复制关系画像">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 8h11v11H8z" />
+                <path d="M5 16H4V4h12v1" />
+              </svg>
+            </button>
+            <button id="resetAll" class="icon-button danger" type="button" title="重置" aria-label="重置">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+                <path d="M18 3v4h-4" />
+                <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+                <path d="M6 21v-4h4" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="signal-strip" aria-label="六维信号">
+          <article>
+            <span>亲密</span>
+            <strong id="metricCloseness">0</strong>
+          </article>
+          <article>
+            <span>心动</span>
+            <strong id="metricSpark">0</strong>
+          </article>
+          <article>
+            <span>双向</span>
+            <strong id="metricMutual">0</strong>
+          </article>
+          <article>
+            <span>安全</span>
+            <strong id="metricSafety">0</strong>
+          </article>
+          <article>
+            <span>未来</span>
+            <strong id="metricFuture">0</strong>
+          </article>
+          <article>
+            <span>稳定</span>
+            <strong id="metricConsistency">0</strong>
+          </article>
+        </section>
+
+        <section class="view active" data-view="radar">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Radar Test</p>
+              <h3>雷达测试</h3>
+            </div>
+            <div class="question-actions">
+              <button id="refreshQuestions" class="secondary-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+                  <path d="M18 3v4h-4" />
+                  <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+                  <path d="M6 21v-4h4" />
+                </svg>
+                <span>换一组题</span>
+              </button>
+              <span id="questionSetBadge" class="soft-badge">1-5 分</span>
+            </div>
+          </div>
+          <div id="questionList" class="question-list"></div>
+        </section>
+
+        <section class="view" data-view="sync">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Sync Card</p>
+              <h3>默契卡</h3>
+            </div>
+            <div class="question-actions">
+              <button id="refreshSync" class="secondary-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+                  <path d="M18 3v4h-4" />
+                  <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+                  <path d="M6 21v-4h4" />
+                </svg>
+                <span>换一组</span>
+              </button>
+              <span id="syncBadge" class="soft-badge">0%</span>
+            </div>
+          </div>
+          <div id="syncGrid" class="comparison-grid"></div>
+        </section>
+
+        <section class="view" data-view="boundary">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Boundary Card</p>
+              <h3>边界卡</h3>
+            </div>
+            <div class="question-actions">
+              <button id="refreshBoundary" class="secondary-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+                  <path d="M18 3v4h-4" />
+                  <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+                  <path d="M6 21v-4h4" />
+                </svg>
+                <span>换一组</span>
+              </button>
+              <span id="boundaryBadge" class="soft-badge">0%</span>
+            </div>
+          </div>
+          <div id="boundaryGrid" class="boundary-grid"></div>
+          <div class="note-grid">
+            <label>
+              <span id="noteLabelA">你需要保留的空间</span>
+              <textarea id="noteA" maxlength="180"></textarea>
+            </label>
+            <label>
+              <span id="noteLabelB">TA需要保留的空间</span>
+              <textarea id="noteB" maxlength="180"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="view" data-view="diary">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Daily Trace</p>
+              <h3>互动日记</h3>
+            </div>
+            <span id="diaryBadge" class="soft-badge">0 条</span>
+          </div>
+          <form id="diaryForm" class="diary-form">
+            <label>
+              <span>日期</span>
+              <input id="diaryDate" name="date" type="date" required />
+            </label>
+            <label>
+              <span>互动</span>
+              <select name="type">
+                <option value="聊天">聊天</option>
+                <option value="见面">见面</option>
+                <option value="帮助">帮助</option>
+                <option value="礼物">礼物</option>
+                <option value="冲突">冲突</option>
+                <option value="陪伴">陪伴</option>
+                <option value="暧昧信号">暧昧信号</option>
+                <option value="边界讨论">边界讨论</option>
+              </select>
+            </label>
+            <label>
+              <span>主动方</span>
+              <select name="actor">
+                <option value="双方">双方</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+              </select>
+            </label>
+            <label>
+              <span>感受</span>
+              <select name="mood">
+                <option value="安心">安心</option>
+                <option value="心动">心动</option>
+                <option value="被照顾">被照顾</option>
+                <option value="困惑">困惑</option>
+                <option value="压力">压力</option>
+                <option value="距离感">距离感</option>
+              </select>
+            </label>
+            <label>
+              <span>温度</span>
+              <input name="warmth" type="range" min="1" max="5" value="3" />
+            </label>
+            <label>
+              <span>靠近感</span>
+              <input name="closeness" type="range" min="1" max="5" value="3" />
+            </label>
+            <label>
+              <span>压力感</span>
+              <input name="pressure" type="range" min="1" max="5" value="2" />
+            </label>
+            <label class="diary-note">
+              <span>一句记录</span>
+              <input name="note" type="text" maxlength="100" placeholder="今天发生了什么" />
+            </label>
+            <label class="diary-next">
+              <span>下一步</span>
+              <input name="next" type="text" maxlength="80" placeholder="想继续、想确认或想放慢" />
+            </label>
+            <button class="primary-button" type="submit">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              <span>记录</span>
+            </button>
+          </form>
+          <div id="diaryList" class="diary-list"></div>
+        </section>
+
+        <section class="view" data-view="story">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Story Choices</p>
+              <h3>剧情选择</h3>
+            </div>
+            <div class="question-actions">
+              <button id="refreshStories" class="secondary-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12a8 8 0 0 1 13.7-5.6" />
+                  <path d="M18 3v4h-4" />
+                  <path d="M20 12a8 8 0 0 1-13.7 5.6" />
+                  <path d="M6 21v-4h4" />
+                </svg>
+                <span>换一组</span>
+              </button>
+              <span id="storyBadge" class="soft-badge">0%</span>
+            </div>
+          </div>
+          <div id="storyList" class="story-list"></div>
+        </section>
+
+        <section class="view" data-view="result">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Portrait</p>
+              <h3>关系画像</h3>
+            </div>
+            <span class="soft-badge">辅助观察</span>
+          </div>
+          <div class="result-layout">
+            <div id="radarChart" class="radar-chart" aria-label="关系雷达图"></div>
+            <article class="portrait-card">
+              <p class="eyebrow">Result</p>
+              <h4 id="resultType">关系还在成形</h4>
+              <p id="resultSummary"></p>
+              <div id="portraitInsights" class="portrait-insights" aria-label="画像洞察"></div>
+              <div id="portraitBars" class="portrait-bars" aria-label="六维画像分布"></div>
+              <div id="conversationPrompts" class="conversation-prompts" aria-label="对话问题"></div>
+              <div id="adviceList" class="advice-list"></div>
+              <div class="share-panel" aria-label="分享结果">
+                <div class="share-header">
+                  <div>
+                    <p class="eyebrow">Share</p>
+                    <strong id="shareStatus">等待双方完成</strong>
+                  </div>
+                  <span id="completionBadge" class="soft-badge">0/2</span>
+                </div>
+                <div class="completion-actions">
+                  <button id="completeA" class="secondary-button" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
+                    <span>A 已写完</span>
+                  </button>
+                  <button id="completeB" class="secondary-button" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m5 12 4 4L19 6" />
+                    </svg>
+                    <span>B 已写完</span>
+                  </button>
+                </div>
+                <div class="share-actions">
+                  <button id="copyForA" class="primary-button" type="button" disabled>复制给 A</button>
+                  <button id="copyForB" class="primary-button" type="button" disabled>复制给 B</button>
+                </div>
+              </div>
+              <textarea id="shareText" readonly aria-label="关系画像文本"></textarea>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js?v=20260708-sharepack"></script>
+  </body>
+</html>
