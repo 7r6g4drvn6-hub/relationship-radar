@@ -1879,13 +1879,13 @@ elements.roleButtons.forEach((button) => {
 });
 
 elements.personA.addEventListener("input", () => {
-  state.names.a = elements.personA.value.trim() || "你";
+  state.names.a = elements.personA.value.trim();
   saveState();
   renderAll();
 });
 
 elements.personB.addEventListener("input", () => {
-  state.names.b = elements.personB.value.trim() || "TA";
+  state.names.b = elements.personB.value.trim();
   saveState();
   renderAll();
 });
