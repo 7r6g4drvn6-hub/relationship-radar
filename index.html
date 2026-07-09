@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>关系雷达</title>
-    <link rel="stylesheet" href="./styles.css?v=20260708-sharepack" />
+    <link rel="stylesheet" href="./styles.css?v=20260709-solo-share" />
   </head>
   <body>
     <div class="app-shell">
@@ -20,6 +20,10 @@
         </div>
 
         <section class="people-panel" aria-label="两个人">
+          <div class="role-switch" aria-label="当前作答人">
+            <button class="role-button active" type="button" data-role="a">我是 A</button>
+            <button class="role-button" type="button" data-role="b">我是 B</button>
+          </div>
           <label>
             <span>A</span>
             <input id="personA" type="text" maxlength="12" />
@@ -341,27 +345,21 @@
                 <div class="share-header">
                   <div>
                     <p class="eyebrow">Share</p>
-                    <strong id="shareStatus">等待双方完成</strong>
+                    <strong id="shareStatus">先完成我的部分</strong>
                   </div>
-                  <span id="completionBadge" class="soft-badge">0/2</span>
+                  <span id="completionBadge" class="soft-badge">A 作答</span>
                 </div>
                 <div class="completion-actions">
-                  <button id="completeA" class="secondary-button" type="button">
+                  <button id="completeCurrent" class="secondary-button" type="button">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="m5 12 4 4L19 6" />
                     </svg>
-                    <span>A 已写完</span>
-                  </button>
-                  <button id="completeB" class="secondary-button" type="button">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="m5 12 4 4L19 6" />
-                    </svg>
-                    <span>B 已写完</span>
+                    <span>完成我的部分</span>
                   </button>
                 </div>
                 <div class="share-actions">
-                  <button id="copyForA" class="primary-button" type="button" disabled>复制给 A</button>
-                  <button id="copyForB" class="primary-button" type="button" disabled>复制给 B</button>
+                  <button id="copyMyShare" class="primary-button" type="button" disabled>复制给对方</button>
+                  <button id="copyCombinedResult" class="primary-button" type="button" disabled>复制双人画像</button>
                 </div>
               </div>
               <textarea id="shareText" readonly aria-label="关系画像文本"></textarea>
@@ -371,6 +369,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260708-sharepack"></script>
+    <script src="./app.js?v=20260709-solo-share"></script>
   </body>
 </html>

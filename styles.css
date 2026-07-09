@@ -154,6 +154,30 @@ h4 {
   padding: 14px;
 }
 
+.role-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  background: #f2f5ed;
+}
+
+.role-button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.role-button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -831,6 +855,10 @@ input[type="range"] {
 .completion-actions button,
 .share-actions button {
   flex: 1 1 0;
+}
+
+.share-actions button {
+  min-height: 44px;
 }
 
 .secondary-button.done {

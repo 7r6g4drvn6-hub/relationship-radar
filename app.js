@@ -489,6 +489,7 @@ const storyBank = [
 const targetStoryCount = 10;
 
 const elements = {
+  roleButtons: document.querySelectorAll("[data-role]"),
   personA: document.querySelector("#personA"),
   personB: document.querySelector("#personB"),
   pairTitle: document.querySelector("#pairTitle"),
@@ -523,10 +524,9 @@ const elements = {
   adviceList: document.querySelector("#adviceList"),
   shareStatus: document.querySelector("#shareStatus"),
   completionBadge: document.querySelector("#completionBadge"),
-  completeA: document.querySelector("#completeA"),
-  completeB: document.querySelector("#completeB"),
-  copyForA: document.querySelector("#copyForA"),
-  copyForB: document.querySelector("#copyForB"),
+  completeCurrent: document.querySelector("#completeCurrent"),
+  copyMyShare: document.querySelector("#copyMyShare"),
+  copyCombinedResult: document.querySelector("#copyCombinedResult"),
   shareText: document.querySelector("#shareText"),
   copyResult: document.querySelector("#copyResult"),
   resetAll: document.querySelector("#resetAll"),
@@ -745,6 +745,7 @@ function createFreshState() {
   const activeStoryIds = pickRandomIds(storyBank, targetStoryCount);
 
   return {
+    currentPerson: "a",
     names: { a: "你", b: "TA" },
     activeQuestionIds: pickRandomQuestionIds(),
     activeSyncIds,
@@ -807,6 +808,7 @@ function loadState() {
       story: { ...fresh.story, ...parsed.story },
       diary: Array.isArray(parsed.diary) ? parsed.diary : fresh.diary,
       completed: { ...fresh.completed, ...parsed.completed },
+      currentPerson: parsed.currentPerson === "b" ? "b" : "a",
     };
   } catch {
     return fresh;
@@ -847,12 +849,23 @@ function average(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function getAnswerScore(question) {
+function getAnswerScore(question, options = {}) {
   const answer = state.answers[question.id] || { a: 3, b: 3 };
-  return average([Number(answer.a || 3), Number(answer.b || 3)]) * 20;
+  const mode = getMetricMode(options);
+  const person = getMetricPerson(options);
+
+  if (mode === "pair" && areBothCompleted()) {
+    return average([Number(answer.a || 3), Number(answer.b || 3)]) * 20;
+  }
+
+  return Number(answer[person] || 3) * 20;
 }
 
-function getDifferencePenalty() {
+function getDifferencePenalty(options = {}) {
+  if (getMetricMode(options) !== "pair" || !areBothCompleted()) {
+    return 0;
+  }
+
   const diffs = getActiveQuestions().map((question) => {
     const answer = state.answers[question.id] || { a: 3, b: 3 };
     return Math.abs(Number(answer.a || 3) - Number(answer.b || 3));
@@ -861,7 +874,28 @@ function getDifferencePenalty() {
   return average(diffs) * 10;
 }
 
-function getSyncScore() {
+function getSoloSyncFieldScore(field, person) {
+  const value = state.sync[person]?.[field.id] || "";
+
+  if (/不确定|看不清|看情况|先不要|暂时不|先不聊/.test(value)) {
+    return 54;
+  }
+
+  if (/恋人|明确|确认|承认|规划|每天|吃醋|情绪/.test(value)) {
+    return 78;
+  }
+
+  return 66;
+}
+
+function getSyncScore(options = {}) {
+  const mode = getMetricMode(options);
+  const person = getMetricPerson(options);
+
+  if (mode !== "pair" || !areBothCompleted()) {
+    return clampScore(average(getActiveSyncFields().map((field) => getSoloSyncFieldScore(field, person))));
+  }
+
   const fieldScores = getActiveSyncFields().map((field) => {
     const valueA = state.sync.a[field.id];
     const valueB = state.sync.b[field.id];
@@ -882,8 +916,18 @@ function getSyncScore() {
   return clampScore(average(fieldScores));
 }
 
-function getBoundaryScore() {
+function getBoundaryScore(options = {}) {
+  const mode = getMetricMode(options);
   const activeBoundaryIds = new Set(getActiveBoundaryItems().map((item) => item.id));
+
+  if (mode !== "pair" || !areBothCompleted()) {
+    const person = getMetricPerson(options);
+    const selectedCount = normalizeBoundarySelection(state.boundaries[person])
+      .filter((id) => activeBoundaryIds.has(id)).length;
+
+    return clampScore(52 + Math.min(selectedCount, 6) * 7);
+  }
+
   const setA = new Set(normalizeBoundarySelection(state.boundaries.a).filter((id) => activeBoundaryIds.has(id)));
   const setB = new Set(normalizeBoundarySelection(state.boundaries.b).filter((id) => activeBoundaryIds.has(id)));
   const union = new Set([...setA, ...setB]);
@@ -902,16 +946,24 @@ function getBoundaryScore() {
   return clampScore((overlap / union.size) * 100);
 }
 
-function getStoryScore() {
-  const selected = getActiveStories()
-    .map((story) => state.story[story.id])
-    .filter((answer) => answer && answer.a && answer.b);
+function getStoryScore(options = {}) {
+  const mode = getMetricMode(options);
+  const person = getMetricPerson(options);
+  const selected = getActiveStories().map((story) => state.story[story.id]);
 
-  if (!selected.length) {
+  if (mode !== "pair" || !areBothCompleted()) {
+    const filled = selected.filter((answer) => answer && answer[person]).length;
+    const ratio = filled / Math.max(1, getActiveStories().length);
+    return clampScore(50 + ratio * 32);
+  }
+
+  const pairSelected = selected.filter((answer) => answer && answer.a && answer.b);
+
+  if (!pairSelected.length) {
     return 60;
   }
 
-  const scores = selected.map((answer) => (answer.a === answer.b ? 100 : 58));
+  const scores = pairSelected.map((answer) => (answer.a === answer.b ? 100 : 58));
   return clampScore(average(scores));
 }
 
@@ -939,19 +991,22 @@ function getDiaryScore() {
   return clampScore(average(scores));
 }
 
-function computeMetrics() {
+function computeMetrics(options = {}) {
+  const mode = getMetricMode(options);
+  const person = getMetricPerson(options);
+  const metricOptions = { mode, person };
   const base = Object.fromEntries(
     Object.keys(axisMeta).map((axis) => {
       const axisQuestions = getActiveQuestions().filter((question) => question.axis === axis);
-      return [axis, average(axisQuestions.map(getAnswerScore))];
+      return [axis, average(axisQuestions.map((question) => getAnswerScore(question, metricOptions)))];
     })
   );
 
-  const syncScore = getSyncScore();
-  const boundaryScore = getBoundaryScore();
-  const storyScore = getStoryScore();
+  const syncScore = getSyncScore(metricOptions);
+  const boundaryScore = getBoundaryScore(metricOptions);
+  const storyScore = getStoryScore(metricOptions);
   const diaryScore = getDiaryScore();
-  const differencePenalty = getDifferencePenalty();
+  const differencePenalty = getDifferencePenalty(metricOptions);
 
   return {
     closeness: clampScore(base.closeness * 0.72 + storyScore * 0.12 + diaryScore * 0.16),
@@ -988,7 +1043,7 @@ function classify(metrics) {
   return { type, summary, total };
 }
 
-function getAdvice(metrics) {
+function getAdvice(metrics, options = {}) {
   const sorted = Object.entries(metrics).sort((a, b) => a[1] - b[1]);
   const [lowestAxis] = sorted[0];
   const advice = {
@@ -1004,10 +1059,10 @@ function getAdvice(metrics) {
   if (metrics.spark >= 70 && metrics.safety >= 60) {
     result.push("心动已经存在，可以尝试一次更明确的邀约，看对方是否愿意同频靠近。");
   }
-  if (getBoundaryScore() < 55) {
+  if (getBoundaryScore(options) < 55) {
     result.push("边界卡差异较大，建议先对齐哪些互动会让彼此有压力。");
   }
-  if (getSyncScore() < 55) {
+  if (getSyncScore(options) < 55) {
     result.push("默契卡显示期待不太一致，适合用开放问题聊聊彼此想要的关系节奏。");
   }
 
@@ -1084,12 +1139,17 @@ function getRelationshipPace(metrics) {
   };
 }
 
-function getModuleConfidence() {
+function getModuleConfidence(options = {}) {
+  const mode = getMetricMode(options);
+  const person = getMetricPerson(options);
   const diaryCount = state.diary.length;
-  const storyAnswers = getActiveStories().filter((story) => state.story[story.id]?.a && state.story[story.id]?.b).length;
-  const syncScore = getSyncScore();
-  const boundaryScore = getBoundaryScore();
-  const storyScore = getStoryScore();
+  const storyAnswers = getActiveStories().filter((story) => {
+    const answer = state.story[story.id];
+    return mode === "pair" && areBothCompleted() ? answer?.a && answer?.b : answer?.[person];
+  }).length;
+  const syncScore = getSyncScore({ mode, person });
+  const boundaryScore = getBoundaryScore({ mode, person });
+  const storyScore = getStoryScore({ mode, person });
   const diaryScore = getDiaryScore();
   const filledStoryRatio = storyAnswers / Math.max(1, getActiveStories().length);
   const diaryRatio = Math.min(1, diaryCount / 5);
@@ -1105,12 +1165,12 @@ function getModuleConfidence() {
   };
 }
 
-function getPortraitCards(metrics, result) {
+function getPortraitCards(metrics, result, options = {}) {
   const ranked = getMetricRank(metrics);
   const [strongAxis, strongValue] = ranked[0];
   const [softAxis, softValue] = ranked[ranked.length - 1];
   const pace = getRelationshipPace(metrics);
-  const confidence = getModuleConfidence();
+  const confidence = getModuleConfidence(options);
 
   return [
     {
@@ -1161,8 +1221,20 @@ function getPersonName(person) {
   return state.names[person] || (person === "a" ? "你" : "TA");
 }
 
+function getActivePerson() {
+  return state.currentPerson === "b" ? "b" : "a";
+}
+
 function getOtherPerson(person) {
   return person === "a" ? "b" : "a";
+}
+
+function getMetricMode(options = {}) {
+  return options.mode || (areBothCompleted() ? "pair" : "solo");
+}
+
+function getMetricPerson(options = {}) {
+  return options.person || getActivePerson();
 }
 
 function getCompletionCount() {
@@ -1190,11 +1262,148 @@ function markCompleted(person) {
   renderMetrics();
 }
 
-function buildShareText(metrics, result, targetPerson = "a") {
+function encodeSharePayload(payload) {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeSharePayload(encoded) {
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function pickPersonValues(source, person, ids) {
+  return Object.fromEntries(ids.map((id) => [id, source[id]?.[person] ?? ""]));
+}
+
+function pickFlatValues(source, ids) {
+  return Object.fromEntries(ids.map((id) => [id, source[id] ?? ""]));
+}
+
+function createSharePayload(person) {
+  return {
+    version: 1,
+    app: "relationship-radar",
+    person,
+    names: state.names,
+    activeQuestionIds: state.activeQuestionIds,
+    activeSyncIds: state.activeSyncIds,
+    activeBoundaryIds: state.activeBoundaryIds,
+    activeStoryIds: state.activeStoryIds,
+    answers: pickPersonValues(state.answers, person, state.activeQuestionIds),
+    sync: pickFlatValues(state.sync[person], state.activeSyncIds),
+    boundaries: normalizeBoundarySelection(state.boundaries[person]),
+    boundaryNote: person === "a" ? state.boundaries.noteA : state.boundaries.noteB,
+    story: pickPersonValues(state.story, person, state.activeStoryIds),
+    completed: Boolean(state.completed?.[person]),
+  };
+}
+
+function buildShareLink(person) {
+  const baseUrl = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+  return `${baseUrl}#rr=${encodeSharePayload(createSharePayload(person))}`;
+}
+
+function hasSameActiveSets(payload) {
+  return (
+    isSameQuestionSet(state.activeQuestionIds, payload.activeQuestionIds || []) &&
+    isSameQuestionSet(state.activeSyncIds, payload.activeSyncIds || []) &&
+    isSameQuestionSet(state.activeBoundaryIds, payload.activeBoundaryIds || []) &&
+    isSameQuestionSet(state.activeStoryIds, payload.activeStoryIds || [])
+  );
+}
+
+function mergeSharedPayload(payload) {
+  if (!payload || payload.app !== "relationship-radar" || !["a", "b"].includes(payload.person)) {
+    return false;
+  }
+
+  const questionIds = getValidQuestionIds(payload.activeQuestionIds);
+  const syncIds = getValidIds(payload.activeSyncIds, syncFieldBank, targetSyncCount);
+  const boundaryIds = getValidIds(payload.activeBoundaryIds, boundaryItemBank, targetBoundaryCount);
+  const storyIds = getValidIds(payload.activeStoryIds, storyBank, targetStoryCount);
+
+  if (!questionIds.length || !syncIds.length || !boundaryIds.length || !storyIds.length) {
+    return false;
+  }
+
+  const sameSets = hasSameActiveSets(payload);
+  if (!sameSets) {
+    state.completed = { a: false, b: false };
+  }
+
+  state.activeQuestionIds = questionIds;
+  state.activeSyncIds = syncIds;
+  state.activeBoundaryIds = boundaryIds;
+  state.activeStoryIds = storyIds;
+  state.names = { ...state.names, ...payload.names };
+  state.currentPerson = getOtherPerson(payload.person);
+
+  questionIds.forEach((id) => {
+    state.answers[id] ||= { a: 3, b: 3 };
+    if (payload.answers?.[id] !== undefined) {
+      state.answers[id][payload.person] = Number(payload.answers[id]) || 3;
+    }
+  });
+
+  syncIds.forEach((id) => {
+    if (payload.sync?.[id] !== undefined) {
+      state.sync[payload.person][id] = payload.sync[id];
+    }
+  });
+
+  state.boundaries[payload.person] = normalizeBoundarySelection(payload.boundaries || []);
+  if (payload.person === "a") {
+    state.boundaries.noteA = String(payload.boundaryNote || "");
+  } else {
+    state.boundaries.noteB = String(payload.boundaryNote || "");
+  }
+
+  storyIds.forEach((id) => {
+    state.story[id] ||= { a: "", b: "" };
+    if (payload.story?.[id] !== undefined) {
+      state.story[id][payload.person] = payload.story[id];
+    }
+  });
+
+  state.completed ||= { a: false, b: false };
+  state.completed[payload.person] = Boolean(payload.completed);
+  saveState();
+  return true;
+}
+
+function importSharedPayloadFromUrl() {
+  const match = window.location.hash.match(/(?:^#|&)rr=([^&]+)/);
+  if (!match) {
+    return false;
+  }
+
+  try {
+    const imported = mergeSharedPayload(decodeSharePayload(match[1]));
+    if (imported && window.history?.replaceState) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    return imported;
+  } catch {
+    return false;
+  }
+}
+
+function buildShareText(metrics, result, targetPerson = "a", options = {}) {
   const targetName = getPersonName(targetPerson);
   const otherName = getPersonName(getOtherPerson(targetPerson));
-  const advice = getAdvice(metrics);
-  const cards = getPortraitCards(metrics, result);
+  const advice = getAdvice(metrics, options);
+  const cards = getPortraitCards(metrics, result, options);
   const prompts = getConversationPrompts(metrics);
 
   return [
@@ -1218,6 +1427,22 @@ function buildShareText(metrics, result, targetPerson = "a") {
   ].join("\n");
 }
 
+function buildShareMessage(person, metrics, result) {
+  const name = getPersonName(person);
+  const otherName = getPersonName(getOtherPerson(person));
+  const link = buildShareLink(person);
+  const report = buildShareText(metrics, result, person, { mode: "solo", person });
+
+  return [
+    `${name} 已完成关系雷达`,
+    `发给 ${otherName} 的填写链接：`,
+    link,
+    "",
+    "我的结果摘要：",
+    report,
+  ].join("\n");
+}
+
 async function copyText(text) {
   elements.shareText.value = text;
   elements.shareText.select();
@@ -1230,15 +1455,22 @@ async function copyText(text) {
 }
 
 function renderPeople() {
+  const activePerson = getActivePerson();
   elements.personA.value = state.names.a;
   elements.personB.value = state.names.b;
   elements.pairTitle.textContent = `${state.names.a || "你"} 和 ${state.names.b || "TA"}`;
   elements.noteLabelA.textContent = `${state.names.a || "你"}需要保留的空间`;
   elements.noteLabelB.textContent = `${state.names.b || "TA"}需要保留的空间`;
+  elements.roleButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.role === activePerson);
+  });
+  elements.noteA.closest("label").hidden = activePerson !== "a";
+  elements.noteB.closest("label").hidden = activePerson !== "b";
 }
 
 function renderQuestions() {
   const activeQuestions = getActiveQuestions();
+  const activePerson = getActivePerson();
   elements.questionList.replaceChildren();
   elements.questionSetBadge.textContent = `${activeQuestions.length} 题 · 1-5 分`;
 
@@ -1257,8 +1489,7 @@ function renderQuestions() {
         <span>5 · ${question.high}</span>
       </div>
       <div class="range-grid">
-        ${renderRange(question.id, "a", state.names.a, answer.a)}
-        ${renderRange(question.id, "b", state.names.b, answer.b)}
+        ${renderRange(question.id, activePerson, state.names[activePerson], answer[activePerson])}
       </div>
     `;
     elements.questionList.append(card);
@@ -1279,6 +1510,7 @@ function renderRange(questionId, person, name, value) {
 
 function renderSync() {
   const activeSyncFields = getActiveSyncFields();
+  const activePerson = getActivePerson();
   elements.syncGrid.replaceChildren();
 
   activeSyncFields.forEach((field, index) => {
@@ -1297,12 +1529,11 @@ function renderSync() {
         <h4 class="compare-title">${field.label}</h4>
       </div>
       <div class="select-pair">
-        ${renderSelect(field, "a", state.names.a, valueA)}
-        ${renderSelect(field, "b", state.names.b, valueB)}
+        ${renderSelect(field, activePerson, state.names[activePerson], state.sync[activePerson][field.id])}
       </div>
       <div class="compare-match">
         <span class="match-dot ${matchClass}"></span>
-        <span>${matchText}</span>
+        <span>${areBothCompleted() ? matchText : "我的选择"}</span>
       </div>
     `;
     elements.syncGrid.append(card);
@@ -1321,9 +1552,10 @@ function renderSelect(field, person, name, value) {
 
 function renderBoundaries() {
   const activeBoundaryItems = getActiveBoundaryItems();
+  const activePerson = getActivePerson();
   elements.boundaryGrid.replaceChildren();
 
-  ["a", "b"].forEach((person) => {
+  [activePerson].forEach((person) => {
     const card = document.createElement("article");
     card.className = "boundary-card";
     const name = person === "a" ? state.names.a : state.names.b;
@@ -1405,6 +1637,7 @@ function renderDiary() {
 
 function renderStories() {
   const activeStories = getActiveStories();
+  const activePerson = getActivePerson();
   elements.storyList.replaceChildren();
 
   activeStories.forEach((story, index) => {
@@ -1419,8 +1652,7 @@ function renderStories() {
         </div>
       </div>
       <div class="story-choices">
-        ${renderStoryChoices(story, "a", state.names.a, answer.a)}
-        ${renderStoryChoices(story, "b", state.names.b, answer.b)}
+        ${renderStoryChoices(story, activePerson, state.names[activePerson], answer[activePerson])}
       </div>
     `;
     elements.storyList.append(card);
@@ -1447,7 +1679,10 @@ function renderStoryChoices(story, person, name, value) {
 }
 
 function renderMetrics() {
-  const metrics = computeMetrics();
+  const mode = areBothCompleted() ? "pair" : "solo";
+  const person = getActivePerson();
+  const metricOptions = { mode, person };
+  const metrics = computeMetrics(metricOptions);
   const result = classify(metrics);
 
   Object.entries(axisMeta).forEach(([axis, meta]) => {
@@ -1456,36 +1691,36 @@ function renderMetrics() {
 
   elements.quickType.textContent = result.type;
   elements.quickScore.textContent = result.total;
-  elements.syncBadge.textContent = `${getSyncScore()}% · ${getActiveSyncFields().length}题`;
-  elements.boundaryBadge.textContent = `${getBoundaryScore()}% · ${getActiveBoundaryItems().length}项`;
-  elements.storyBadge.textContent = `${getStoryScore()}% · ${getActiveStories().length}题`;
+  elements.syncBadge.textContent = `${getSyncScore(metricOptions)}% · ${getActiveSyncFields().length}题`;
+  elements.boundaryBadge.textContent = `${getBoundaryScore(metricOptions)}% · ${getActiveBoundaryItems().length}项`;
+  elements.storyBadge.textContent = `${getStoryScore(metricOptions)}% · ${getActiveStories().length}题`;
 
-  renderResult(metrics, result);
+  renderResult(metrics, result, metricOptions);
 }
 
-function renderResult(metrics, result) {
+function renderResult(metrics, result, metricOptions = {}) {
   elements.resultType.textContent = result.type;
   elements.resultSummary.textContent = result.summary;
   elements.radarChart.innerHTML = createRadarSvg(metrics);
-  renderPortraitInsights(metrics, result);
+  renderPortraitInsights(metrics, result, metricOptions);
   renderPortraitBars(metrics);
   renderConversationPrompts(metrics);
   elements.adviceList.replaceChildren();
 
-  getAdvice(metrics).forEach((item) => {
+  getAdvice(metrics, metricOptions).forEach((item) => {
     const advice = document.createElement("div");
     advice.className = "advice-item";
     advice.textContent = item;
     elements.adviceList.append(advice);
   });
 
-  renderSharePanel(metrics, result);
+  renderSharePanel(metrics, result, metricOptions);
 }
 
-function renderPortraitInsights(metrics, result) {
+function renderPortraitInsights(metrics, result, metricOptions = {}) {
   elements.portraitInsights.replaceChildren();
 
-  getPortraitCards(metrics, result).forEach((card) => {
+  getPortraitCards(metrics, result, metricOptions).forEach((card) => {
     const item = document.createElement("article");
     item.className = "portrait-insight";
     item.innerHTML = `
@@ -1533,29 +1768,30 @@ function renderConversationPrompts(metrics) {
   });
 }
 
-function renderSharePanel(metrics, result) {
+function renderSharePanel(metrics, result, metricOptions = {}) {
   const completedCount = getCompletionCount();
   const bothCompleted = areBothCompleted();
-  const nameA = getPersonName("a");
-  const nameB = getPersonName("b");
-  const waitingNames = [
-    state.completed?.a ? "" : nameA,
-    state.completed?.b ? "" : nameB,
-  ].filter(Boolean);
+  const activePerson = getActivePerson();
+  const activeName = getPersonName(activePerson);
+  const otherName = getPersonName(getOtherPerson(activePerson));
+  const isCurrentCompleted = Boolean(state.completed?.[activePerson]);
 
-  elements.completionBadge.textContent = `${completedCount}/2`;
-  elements.shareStatus.textContent = bothCompleted ? "双方已完成，可以分享" : `等待 ${waitingNames.join("、")} 完成`;
-  elements.completeA.classList.toggle("done", Boolean(state.completed?.a));
-  elements.completeB.classList.toggle("done", Boolean(state.completed?.b));
-  elements.completeA.querySelector("span").textContent = state.completed?.a ? `${nameA} 已完成` : `${nameA} 已写完`;
-  elements.completeB.querySelector("span").textContent = state.completed?.b ? `${nameB} 已完成` : `${nameB} 已写完`;
-  elements.copyForA.disabled = !bothCompleted;
-  elements.copyForB.disabled = !bothCompleted;
-  elements.copyForA.textContent = `复制给 ${nameA}`;
-  elements.copyForB.textContent = `复制给 ${nameB}`;
-  elements.shareText.value = bothCompleted
-    ? buildShareText(metrics, result, "a")
-    : "双方都标记完成后，这里会生成可分享的关系画像。";
+  elements.completionBadge.textContent = bothCompleted ? "双人画像" : `${activeName} 作答`;
+  elements.shareStatus.textContent = bothCompleted
+    ? "双方已完成，可以对照结果"
+    : isCurrentCompleted
+      ? `已完成，复制给 ${otherName}`
+      : `${activeName} 完成后可分享给 ${otherName}`;
+  elements.completeCurrent.classList.toggle("done", isCurrentCompleted);
+  elements.completeCurrent.querySelector("span").textContent = isCurrentCompleted ? `${activeName} 已完成` : "完成我的部分";
+  elements.copyMyShare.disabled = !isCurrentCompleted;
+  elements.copyMyShare.textContent = `复制给 ${otherName}`;
+  elements.copyCombinedResult.disabled = !bothCompleted;
+  elements.copyCombinedResult.textContent = bothCompleted ? "复制双人画像" : `${completedCount}/2 完成`;
+  const soloMetrics = computeMetrics({ mode: "solo", person: activePerson });
+  elements.shareText.value = isCurrentCompleted
+    ? buildShareMessage(activePerson, soloMetrics, classify(soloMetrics))
+    : buildShareText(metrics, result, activePerson, metricOptions);
 }
 
 function createRadarSvg(metrics) {
@@ -1631,6 +1867,14 @@ document.querySelectorAll(".module-button").forEach((button) => {
     button.classList.add("active");
     document.querySelector(".view.active").classList.remove("active");
     document.querySelector(`.view[data-view="${button.dataset.view}"]`).classList.add("active");
+  });
+});
+
+elements.roleButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.currentPerson = button.dataset.role === "b" ? "b" : "a";
+    saveState();
+    renderAll();
   });
 });
 
@@ -1760,12 +2004,14 @@ elements.storyList.addEventListener("click", (event) => {
 });
 
 elements.copyResult.addEventListener("click", async () => {
-  if (!areBothCompleted()) {
-    elements.shareText.value = "双方都标记完成后，才能复制关系画像。";
+  const activePerson = getActivePerson();
+  if (!state.completed?.[activePerson]) {
+    elements.shareText.value = "先在关系画像里点“完成我的部分”，再复制给对方。";
     return;
   }
 
-  await copyText(elements.shareText.value);
+  const metrics = computeMetrics({ mode: "solo", person: activePerson });
+  await copyText(buildShareMessage(activePerson, metrics, classify(metrics)));
   elements.copyResult.classList.add("copied");
   setTimeout(() => elements.copyResult.classList.remove("copied"), 900);
 });
@@ -1782,24 +2028,25 @@ elements.refreshSync.addEventListener("click", refreshSyncSet);
 elements.refreshBoundary.addEventListener("click", refreshBoundarySet);
 elements.refreshStories.addEventListener("click", refreshStorySet);
 
-elements.completeA.addEventListener("click", () => markCompleted("a"));
-elements.completeB.addEventListener("click", () => markCompleted("b"));
-elements.copyForA.addEventListener("click", async () => {
+elements.completeCurrent.addEventListener("click", () => markCompleted(getActivePerson()));
+elements.copyMyShare.addEventListener("click", async () => {
+  const activePerson = getActivePerson();
+  if (!state.completed?.[activePerson]) {
+    return;
+  }
+
+  const metrics = computeMetrics({ mode: "solo", person: activePerson });
+  await copyText(buildShareMessage(activePerson, metrics, classify(metrics)));
+});
+elements.copyCombinedResult.addEventListener("click", async () => {
   if (!areBothCompleted()) {
     return;
   }
 
-  const metrics = computeMetrics();
-  await copyText(buildShareText(metrics, classify(metrics), "a"));
-});
-elements.copyForB.addEventListener("click", async () => {
-  if (!areBothCompleted()) {
-    return;
-  }
-
-  const metrics = computeMetrics();
-  await copyText(buildShareText(metrics, classify(metrics), "b"));
+  const metrics = computeMetrics({ mode: "pair", person: getActivePerson() });
+  await copyText(buildShareText(metrics, classify(metrics), getActivePerson(), { mode: "pair", person: getActivePerson() }));
 });
 
+importSharedPayloadFromUrl();
 elements.diaryDate.valueAsDate = new Date();
 renderAll();
